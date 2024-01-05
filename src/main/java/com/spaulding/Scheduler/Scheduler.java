@@ -159,7 +159,7 @@ public class Scheduler extends Thread {
                 fail = true;
             }
 
-            fail = fail || (jarToRun == null && (classToRun == null || methodToRun == null));
+            fail = fail || (jarToRun == null && classToRun == null);
 
             if (fail) {
                 String message = "Group Property Errors: " +
@@ -169,9 +169,7 @@ public class Scheduler extends Thread {
                         ((classToRunInstances == 0 && jarToRunInstances == 0) ? "Could not find classToRun group property." :
                                 ((classToRunInstances == 1) ? "" : classToRunInstances + " instances of classToRun group property found.")
                         ) +
-                        ((methodToRunInstances == 0 && jarToRunInstances == 0) ? "Could not find methodToRun property." :
-                                ((methodToRunInstances == 1) ? "" : methodToRunInstances + " instances of methodToRun group property found.")
-                        ) +
+                        ((methodToRunInstances == 1) ? "" : methodToRunInstances + " instances of methodToRun group property found.") +
                         ((duplicateArgInstances == 0) ? "" : duplicateArgInstances + " instance(s) of duplicate argument group properties found.") +
                         ((unknownArgNumberInstances == 0) ? "" : unknownArgNumberInstances + " instance(s) of an unknown argument group property number found.") +
                         ((unknownPropertyInstances == 0) ? "" : unknownPropertyInstances + " instance(s) of an unknown group property found.");

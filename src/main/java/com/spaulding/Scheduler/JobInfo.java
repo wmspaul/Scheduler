@@ -7,7 +7,7 @@ import lombok.NonNull;
 public class JobInfo {
     private final String id, jarToRun, classToRun, methodToRun;
     private final String[] args;
-    public JobInfo(@NonNull String id, @NonNull String classToRun, @NonNull String methodToRun, @NonNull String[] args) {
+    public JobInfo(@NonNull String id, @NonNull String classToRun, String methodToRun, @NonNull String[] args) {
         this.id = id;
         jarToRun = null;
         this.classToRun = classToRun;
