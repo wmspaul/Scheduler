@@ -5,9 +5,12 @@ import lombok.NonNull;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class Scheduler extends Thread {
+    private final Map<String, Object> objectInstances = new HashMap<>();
     private final SchedulerArchive archive;
     private final JobExecutor[] jobExecutors;
     private boolean isRunning;
@@ -17,10 +20,18 @@ public class Scheduler extends Thread {
         jobExecutors = new JobExecutor[threads];
 
         for (int i = 0; i < threads; i++) {
-            jobExecutors[i] = new JobExecutor(archive);
+            jobExecutors[i] = new JobExecutor(this, archive);
         }
 
         isRunning = false;
+    }
+
+    public synchronized void registerObjectInstance(String name, Object object) {
+        objectInstances.putIfAbsent(name, object);
+    }
+
+    public Object getObjectInstance(String name) {
+        return objectInstances.get(name);
     }
 
     public void run() {
@@ -33,10 +44,10 @@ public class Scheduler extends Thread {
         }
 
         while (isRunning) {
-            List<Job> jobs = getJobs();
+            List<JobInfo> jobs = getJobs();
             while (!jobs.isEmpty()) {
                 for (JobExecutor executor : jobExecutors) {
-                    Job job = jobs.get(0);
+                    JobInfo job = jobs.get(0);
                     if (executor.loadJob(job)) {
                         jobs.remove(0);
                     }
@@ -55,17 +66,20 @@ public class Scheduler extends Thread {
         }
     }
 
-    private List<Job> getJobs() {
+    private List<JobInfo> getJobs() {
         List<Archive.Row> rows = archive.getJobs();
-        List<Job> jobs = new ArrayList<>();
+        List<JobInfo> jobs = new ArrayList<>();
         for (Archive.Row row : rows) {
             String id = (String) row.getResult(0);
             String groupName = (String) row.getResult(2);
             List<Archive.Row> groupInfo = archive.getGroupInfo(groupName);
+            String jarToRun = null;
             String classToRun = null;
-            String[] args = new String[groupInfo.size() - 1];
+            String methodToRun = null;
             boolean fail = false;
+            int jarToRunInstances = 0;
             int classToRunInstances = 0;
+            int methodToRunInstances = 0;
             int unknownPropertyInstances = 0;
             int duplicateArgInstances = 0;
             int unknownArgNumberInstances = 0;
@@ -81,7 +95,36 @@ public class Scheduler extends Thread {
                     }
                     classToRunInstances++;
                 }
-                else if (key.contains("arg")) {
+                else if (key.equals("jarToRun")) {
+                    if (jarToRun == null) {
+                        jarToRun = value;
+                    }
+                    else {
+                        fail = true;
+                    }
+                    jarToRunInstances++;
+                }
+                else if (key.equals("methodToRun")) {
+                    if (methodToRun == null) {
+                        methodToRun = value;
+                    }
+                    else {
+                        fail = true;
+                    }
+                    methodToRunInstances++;
+                }
+                else if (!key.contains("arg")) {
+                    fail = true;
+                    unknownPropertyInstances++;
+                }
+            }
+
+            String[] args = new String[groupInfo.size() - (classToRunInstances + jarToRunInstances + methodToRunInstances)];
+            for (Archive.Row info : groupInfo) {
+                String key = (String) info.getResult(1);
+                String value = (String) info.getResult(2);
+
+                if (key.contains("arg")) {
                     String[] argInfo = key.split("-");
                     int argNum = 0;
                     if (argInfo.length == 2) {
@@ -110,28 +153,39 @@ public class Scheduler extends Thread {
                         duplicateArgInstances++;
                     }
                 }
-                else {
-                    fail = true;
-                    unknownPropertyInstances++;
-                }
             }
 
             if (classToRunInstances == 0) {
                 fail = true;
             }
 
+            fail = fail || (jarToRun == null && (classToRun == null || methodToRun == null));
+
             if (fail) {
-                String message = "Group Name Errors: " +
-                        ((classToRunInstances == 0) ? "Could not find classToRun property." :
-                                ((classToRunInstances == 1) ? "" : classToRunInstances + " instances of classToRun property found.")
+                String message = "Group Property Errors: " +
+                        ((jarToRunInstances != 0 && (classToRunInstances != 0 || methodToRunInstances != 0)) ?
+                                "Found use of both jar run properties and class run group properties." :
+                                "") +
+                        ((classToRunInstances == 0 && jarToRunInstances == 0) ? "Could not find classToRun group property." :
+                                ((classToRunInstances == 1) ? "" : classToRunInstances + " instances of classToRun group property found.")
                         ) +
-                        ((duplicateArgInstances == 0) ? "" : duplicateArgInstances + " instance(s) of duplicate arguments found.") +
-                        ((unknownArgNumberInstances == 0) ? "" : unknownArgNumberInstances + " instance(s) of an unknown arg number found.") +
-                        ((unknownPropertyInstances == 0) ? "" : unknownPropertyInstances + " instance(s) of an unknown property found.");
+                        ((methodToRunInstances == 0 && jarToRunInstances == 0) ? "Could not find methodToRun property." :
+                                ((methodToRunInstances == 1) ? "" : methodToRunInstances + " instances of methodToRun group property found.")
+                        ) +
+                        ((duplicateArgInstances == 0) ? "" : duplicateArgInstances + " instance(s) of duplicate argument group properties found.") +
+                        ((unknownArgNumberInstances == 0) ? "" : unknownArgNumberInstances + " instance(s) of an unknown argument group property number found.") +
+                        ((unknownPropertyInstances == 0) ? "" : unknownPropertyInstances + " instance(s) of an unknown group property found.");
                 archive.addJobError(id, message);
             }
             else {
-                jobs.add(new Job(id, classToRun, args));
+                JobInfo job;
+                if (jarToRun == null) {
+                    job = new JobInfo(id, classToRun, methodToRun, args);
+                }
+                else {
+                    job = new JobInfo(id, jarToRun, args);
+                }
+                jobs.add(job);
             }
         }
 
