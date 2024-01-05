@@ -105,7 +105,11 @@ public class SchedulerArchive extends Archive {
         return execute(SYSADMIN, JOB_TABLE_SELECT, new Object[]{ STATUS_WAITING });
     }
 
-    public List<Row> getProperties(@NonNull String groupName, String jobName) throws SQLException {
+    public List<Row> getProperties(String groupName, String jobName) throws SQLException {
+        if (groupName == null) {
+            return jobName == null ? new ArrayList<>() : getJobProperties(jobName);
+        }
+
         List<Row> groupProperties = getGroupProperties(groupName);
         if (jobName == null) {
             return groupProperties;
