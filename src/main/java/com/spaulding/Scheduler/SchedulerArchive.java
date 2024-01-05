@@ -1,10 +1,12 @@
 package com.spaulding.Scheduler;
 
 import com.spaulding.tools.Archive.Archive;
+import lombok.NonNull;
 
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 
 public class SchedulerArchive extends Archive {
@@ -14,6 +16,8 @@ public class SchedulerArchive extends Archive {
     public static final String JOB_DATA_TABLE_SELECT = "job-data" + SELECT_FOLLOWER;
     public static final String JOB_DATA_TABLE_INSERT = "job-data" + INSERT_FOLLOWER;
     public static final String JOB_DATA_TABLE_UPDATE = "job-data" + UPDATE_FOLLOWER;
+    public static final String GROUP_PROPERTIES_TABLE_SELECT = "group-properties" + SELECT_FOLLOWER;
+    public static final String JOB_PROPERTIES_TABLE_SELECT = "job-properties" + SELECT_FOLLOWER;
 
     public static final String STATUS_ERROR = "Error";
     public static final String STATUS_WAITING = "Waiting";
@@ -27,7 +31,7 @@ public class SchedulerArchive extends Archive {
 
     @Override
     protected void setup() throws SQLException {
-        jdbc.execute("CREATE TABLE IF NOT EXISTS jobs (id INTEGER PRIMARY KEY, status VARCHAR, group_name VARCHAR, job_name VARCHAR, last_updated VARCHAR, FOREIGN KEY(group_name) REFERENCES group_properties(name)))");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS jobs (id INTEGER PRIMARY KEY, status VARCHAR, group_name VARCHAR, job_name VARCHAR, last_updated VARCHAR, FOREIGN KEY(group_name) REFERENCES group_properties(name)), FOREIGN KEY(job_name) REFERENCES job_properties(name)))");
         jdbc.execute("CREATE TABLE IF NOT EXISTS group_properties (name VARCHAR, key VARCHAR, value VARCHAR, UNIQUE(id, key))");
         jdbc.execute("CREATE TABLE IF NOT EXISTS job_properties (name VARCHAR, key VARCHAR, value VARCHAR, UNIQUE(id, key))");
         jdbc.execute("CREATE TABLE IF NOT EXISTS job_data (id VARCHAR, key VARCHAR, value VARCHAR, UNIQUE(id, key))");
@@ -79,25 +83,72 @@ public class SchedulerArchive extends Archive {
                 "String,Integer,String"
         };
         execute(SYSADMIN, AUTH_REF_TABLE_INSERT, args);
+
+        args = new Object[] {
+                GROUP_PROPERTIES_TABLE_SELECT,
+                "SELECT * FROM group_properties WHERE name = ?",
+                1,
+                "String"
+        };
+        execute(SYSADMIN, AUTH_REF_TABLE_INSERT, args);
+
+        args = new Object[] {
+                JOB_PROPERTIES_TABLE_SELECT,
+                "SELECT * FROM job_properties WHERE name = ?",
+                1,
+                "String"
+        };
+        execute(SYSADMIN, AUTH_REF_TABLE_INSERT, args);
     }
 
-    public List<Row> getJobs() {
-        return new ArrayList<>();
+    public List<Row> getJobs() throws SQLException {
+        return execute(SYSADMIN, JOB_TABLE_SELECT, new Object[]{ STATUS_WAITING });
     }
 
-    public List<Row> getGroupInfo(String groupName) {
-        return new ArrayList<>();
+    public List<Row> getProperties(@NonNull String groupName, String jobName) throws SQLException {
+        List<Row> groupProperties = getGroupProperties(groupName);
+        if (jobName == null) {
+            return groupProperties;
+        }
+
+        List<Row> jobProperties = getJobProperties(jobName);
+        List<Row> results = new ArrayList<>(jobProperties);
+        for (Row groupProperty : groupProperties) {
+            String key = (String) groupProperty.getResult(1);
+            boolean found = false;
+            for (Row jobProperty : jobProperties) {
+                String check = (String) jobProperty.getResult(1);
+                if (key.equals(check)) {
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found) {
+                results.add(groupProperty);
+            }
+        }
+
+        return results;
     }
 
-    public List<Row> getJobInfo(String jobName) {
-        return new ArrayList<>();
+    private List<Row> getGroupProperties(@NonNull String groupName) throws SQLException {
+        return execute(SYSADMIN, GROUP_PROPERTIES_TABLE_SELECT, new Object[]{ groupName });
     }
 
-    public void updateJobStatus(String id, String status) throws SQLException {
+    private List<Row> getJobProperties(@NonNull String jobName) throws SQLException {
+        return execute(SYSADMIN, JOB_PROPERTIES_TABLE_SELECT, new Object[]{ jobName });
+    }
+
+    public List<Row> getJobData(@NonNull Integer id) throws SQLException {
+        return execute(SYSADMIN, JOB_DATA_TABLE_SELECT, new Object[]{ id });
+    }
+
+    public void updateJobStatus(@NonNull Integer id, @NonNull String status) throws SQLException {
         execute(SYSADMIN, JOB_TABLE_UPDATE, new Object[]{ status, LocalDateTime.now(), id });
     }
 
-    public void addJobError(String id, String message) throws SQLException {
+    public void addJobError(@NonNull Integer id, @NonNull String message) throws SQLException {
         try {
             execute(SYSADMIN, JOB_DATA_TABLE_INSERT, new Object[]{ id, "error", message });
         }
@@ -105,5 +156,9 @@ public class SchedulerArchive extends Archive {
             execute(SYSADMIN, JOB_DATA_TABLE_UPDATE, new Object[]{ message, id, "error" });
         }
         updateJobStatus(id, SchedulerArchive.STATUS_ERROR);
+    }
+
+    public void addJob() {
+
     }
 }

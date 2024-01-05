@@ -46,18 +46,24 @@ public class Scheduler extends Thread {
         }
 
         while (isRunning) {
-            List<JobInfo> jobs = getJobs();
-            while (!jobs.isEmpty()) {
-                for (JobExecutor executor : jobExecutors) {
-                    JobInfo job = jobs.get(0);
-                    if (executor.loadJob(job)) {
-                        jobs.remove(0);
+            try {
+                List<JobInfo> jobs = getJobs();
+                while (!jobs.isEmpty()) {
+                    for (JobExecutor executor : jobExecutors) {
+                        JobInfo job = jobs.get(0);
+                        if (executor.loadJob(job)) {
+                            jobs.remove(0);
+                        }
+                    }
+
+                    if (jobs.isEmpty()) {
+                        jobs = getJobs();
                     }
                 }
-
-                if (jobs.isEmpty()) {
-                    jobs = getJobs();
-                }
+            }
+            catch (SQLException e) {
+                log.error(e.getMessage());
+                throw new RuntimeException(e);
             }
 
             try {
@@ -68,13 +74,14 @@ public class Scheduler extends Thread {
         }
     }
 
-    private List<JobInfo> getJobs() {
+    private List<JobInfo> getJobs() throws SQLException {
         List<Archive.Row> rows = archive.getJobs();
         List<JobInfo> jobs = new ArrayList<>();
         for (Archive.Row row : rows) {
-            String id = (String) row.getResult(0);
-            String groupName = (String) row.getResult(2);
-            List<Archive.Row> groupInfo = archive.getGroupInfo(groupName);
+            Integer id = (Integer) row.getResult(0);
+            String groupName = (row.getResult(2) == null) ? null : (String) row.getResult(2);
+            String jobName = (row.getResult(3) == null) ? null : (String) row.getResult(2);
+            List<Archive.Row> properties = archive.getProperties(groupName, jobName);
             String jarToRun = null;
             String classToRun = null;
             String methodToRun = null;
@@ -85,7 +92,7 @@ public class Scheduler extends Thread {
             int unknownPropertyInstances = 0;
             int duplicateArgInstances = 0;
             int unknownArgNumberInstances = 0;
-            for (Archive.Row info : groupInfo) {
+            for (Archive.Row info : properties) {
                 String key = (String) info.getResult(1);
                 String value = (String) info.getResult(2);
                 if (key.equals("classToRun")) {
@@ -121,8 +128,8 @@ public class Scheduler extends Thread {
                 }
             }
 
-            String[] args = new String[groupInfo.size() - (classToRunInstances + jarToRunInstances + methodToRunInstances)];
-            for (Archive.Row info : groupInfo) {
+            String[] args = new String[properties.size() - (classToRunInstances + jarToRunInstances + methodToRunInstances)];
+            for (Archive.Row info : properties) {
                 String key = (String) info.getResult(1);
                 String value = (String) info.getResult(2);
 
@@ -164,17 +171,17 @@ public class Scheduler extends Thread {
             fail = fail || (jarToRun == null && classToRun == null);
 
             if (fail) {
-                String message = "Group Property Errors: " +
+                String message = "Property errors found, please double check group and job properties: " +
                         ((jarToRunInstances != 0 && (classToRunInstances != 0 || methodToRunInstances != 0)) ?
-                                "Found use of both jar run properties and class run group properties." :
+                                "Found use of both jar run properties and class run properties." :
                                 "") +
-                        ((classToRunInstances == 0 && jarToRunInstances == 0) ? "Could not find classToRun group property." :
-                                ((classToRunInstances == 1) ? "" : classToRunInstances + " instances of classToRun group property found.")
+                        ((classToRunInstances == 0 && jarToRunInstances == 0) ? "Could not find classToRun property." :
+                                ((classToRunInstances == 1) ? "" : classToRunInstances + " instances of classToRun property found.")
                         ) +
-                        ((methodToRunInstances == 1) ? "" : methodToRunInstances + " instances of methodToRun group property found.") +
-                        ((duplicateArgInstances == 0) ? "" : duplicateArgInstances + " instance(s) of duplicate argument group properties found.") +
-                        ((unknownArgNumberInstances == 0) ? "" : unknownArgNumberInstances + " instance(s) of an unknown argument group property number found.") +
-                        ((unknownPropertyInstances == 0) ? "" : unknownPropertyInstances + " instance(s) of an unknown group property found.");
+                        ((methodToRunInstances == 1) ? "" : methodToRunInstances + " instances of methodToRun property found.") +
+                        ((duplicateArgInstances == 0) ? "" : duplicateArgInstances + " instance(s) of duplicate argument properties found.") +
+                        ((unknownArgNumberInstances == 0) ? "" : unknownArgNumberInstances + " instance(s) of an unknown argument property number found.") +
+                        ((unknownPropertyInstances == 0) ? "" : unknownPropertyInstances + " instance(s) of an unknown property found.");
 
                 try {
                     archive.addJobError(id, message);

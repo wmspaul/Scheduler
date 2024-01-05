@@ -5,9 +5,10 @@ import lombok.NonNull;
 
 @Getter
 public class JobInfo {
-    private final String id, jarToRun, classToRun, methodToRun;
+    private final Integer id;
+    private final String jarToRun, classToRun, methodToRun;
     private final String[] args;
-    public JobInfo(@NonNull String id, @NonNull String classToRun, String methodToRun, @NonNull String[] args) {
+    public JobInfo(@NonNull Integer id, @NonNull String classToRun, String methodToRun, @NonNull String[] args) {
         this.id = id;
         jarToRun = null;
         this.classToRun = classToRun;
@@ -15,7 +16,7 @@ public class JobInfo {
         this.args = args;
     }
 
-    public JobInfo(@NonNull String id, @NonNull String jarToRun, @NonNull String[] args) {
+    public JobInfo(@NonNull Integer id, @NonNull String jarToRun, @NonNull String[] args) {
         this.id = id;
         this.jarToRun = jarToRun;
         classToRun = null;

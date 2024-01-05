@@ -51,7 +51,11 @@ public class JobExecutor extends Thread {
                         Object obj = scheduler.getObjectInstance(classToRun);
                         if (obj == null) {
                             Class<?> c = Class.forName(classToRun);
-                            Job job = (Job) c.getDeclaredConstructor(SchedulerArchive.class, JobInfo.class).newInstance(archive, jobInfo);
+                            Job job = (Job) c.getDeclaredConstructor(
+                                            Scheduler.class,
+                                            SchedulerArchive.class,
+                                            JobInfo.class)
+                                    .newInstance(scheduler, archive, jobInfo);
                             job.run();
                         } else {
                             Method method = obj.getClass().getMethod(jobInfo.getMethodToRun());
@@ -60,7 +64,7 @@ public class JobExecutor extends Thread {
                     } else {
                         String[] commands = new String[jobInfo.getArgs().length + 2];
                         commands[0] = jobInfo.getJarToRun();
-                        commands[1] = jobInfo.getId();
+                        commands[1] = jobInfo.getId() + "";
                         for (int i = 2; i < commands.length; i++) {
                             commands[2] = jobInfo.getArgs()[i - 2];
                         }
