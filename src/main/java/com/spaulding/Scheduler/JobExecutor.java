@@ -4,9 +4,12 @@ import com.spaulding.tools.Runner.Runner;
 import lombok.Getter;
 import lombok.NonNull;
 import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Method;
+import java.sql.SQLException;
 
+@Slf4j
 public class JobExecutor extends Thread {
     private final Scheduler scheduler;
     private final SchedulerArchive archive;
@@ -25,7 +28,12 @@ public class JobExecutor extends Thread {
 
     public synchronized boolean loadJob(@NonNull JobInfo job) {
         if (this.jobInfo == null) {
-            archive.updateJobInfo(job.getId(), SchedulerArchive.STATUS_LOADED);
+            try {
+                archive.updateJobStatus(job.getId(), SchedulerArchive.STATUS_LOADED);
+            } catch (SQLException e) {
+                log.error(e.getMessage());
+                throw new RuntimeException(e);
+            }
             this.jobInfo = job;
             return true;
         }
@@ -37,40 +45,35 @@ public class JobExecutor extends Thread {
 
         while (isRunning) {
             if (jobInfo != null) {
-                if (jobInfo.getJarToRun() == null) {
-                    String classToRun = jobInfo.getClassToRun();
-                    Object obj = scheduler.getObjectInstance(classToRun);
-                    if (obj == null) {
-                        try {
+                try {
+                    if (jobInfo.getJarToRun() == null) {
+                        String classToRun = jobInfo.getClassToRun();
+                        Object obj = scheduler.getObjectInstance(classToRun);
+                        if (obj == null) {
                             Class<?> c = Class.forName(classToRun);
                             Job job = (Job) c.getDeclaredConstructor(SchedulerArchive.class, JobInfo.class).newInstance(archive, jobInfo);
                             job.run();
-                        }
-                        catch (Throwable e) {
-                            archive.addJobError(jobInfo.getId(), e.getMessage());
-                        }
-                    }
-                    else {
-                        try {
+                        } else {
                             Method method = obj.getClass().getMethod(jobInfo.getMethodToRun());
                             method.invoke(obj);
-                        } catch (Throwable e) {
-                            archive.addJobError(jobInfo.getId(), e.getMessage());
                         }
+                    } else {
+                        String[] commands = new String[jobInfo.getArgs().length + 2];
+                        commands[0] = jobInfo.getJarToRun();
+                        commands[1] = jobInfo.getId();
+                        for (int i = 2; i < commands.length; i++) {
+                            commands[2] = jobInfo.getArgs()[i - 2];
+                        }
+
+                        Runner.runProcess(commands);
                     }
                 }
-                else {
-                    String[] commands = new String[jobInfo.getArgs().length + 2];
-                    commands[0] = jobInfo.getJarToRun();
-                    commands[1] = jobInfo.getId();
-                    for (int i = 2; i < commands.length; i++) {
-                        commands[2] = jobInfo.getArgs()[i - 2];
-                    }
-
+                catch (Throwable e) {
                     try {
-                        Runner.runProcess(commands);
-                    } catch (Exception e) {
                         archive.addJobError(jobInfo.getId(), e.getMessage());
+                    } catch (SQLException ex) {
+                        log.error(ex.getMessage());
+                        throw new RuntimeException(ex);
                     }
                 }
 

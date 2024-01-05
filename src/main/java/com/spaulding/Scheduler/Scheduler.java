@@ -2,6 +2,7 @@ package com.spaulding.Scheduler;
 
 import com.spaulding.tools.Archive.Archive;
 import lombok.NonNull;
+import lombok.extern.slf4j.Slf4j;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -9,6 +10,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 public class Scheduler extends Thread {
     private final Map<String, Object> objectInstances = new HashMap<>();
     private final SchedulerArchive archive;
@@ -173,7 +175,13 @@ public class Scheduler extends Thread {
                         ((duplicateArgInstances == 0) ? "" : duplicateArgInstances + " instance(s) of duplicate argument group properties found.") +
                         ((unknownArgNumberInstances == 0) ? "" : unknownArgNumberInstances + " instance(s) of an unknown argument group property number found.") +
                         ((unknownPropertyInstances == 0) ? "" : unknownPropertyInstances + " instance(s) of an unknown group property found.");
-                archive.addJobError(id, message);
+
+                try {
+                    archive.addJobError(id, message);
+                } catch (SQLException e) {
+                    log.error(e.getMessage());
+                    throw new RuntimeException(e);
+                }
             }
             else {
                 JobInfo job;
