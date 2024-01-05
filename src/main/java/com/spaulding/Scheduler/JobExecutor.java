@@ -56,7 +56,7 @@ public class JobExecutor extends Thread {
                                             SchedulerArchive.class,
                                             JobInfo.class)
                                     .newInstance(scheduler, archive, jobInfo);
-                            job.run();
+                            job.start();
                         } else {
                             Method method = obj.getClass().getMethod(jobInfo.getMethodToRun());
                             method.invoke(obj);

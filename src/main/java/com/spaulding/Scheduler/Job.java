@@ -19,5 +19,17 @@ public abstract class Job {
         data = archive.getJobData(info.getId());
     }
 
-    public abstract void run();
+    public void start() throws SQLException {
+        archive.updateJobStatus(info.getId(), SchedulerArchive.STATUS_RUNNING);
+        try {
+            run();
+            archive.updateJobStatus(info.getId(), SchedulerArchive.STATUS_COMPLETED);
+        }
+        catch (Exception e) {
+            archive.updateJobStatus(info.getId(), SchedulerArchive.STATUS_ERROR);
+            // TODO: Error handling config through database
+        }
+    }
+
+    protected abstract void run();
 }
